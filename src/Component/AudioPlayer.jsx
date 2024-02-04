@@ -113,6 +113,7 @@ const AudioPlayer = () => {
       setCurrentTrackIndex(playlist.length);
       toast("Successfully Added to PlayList");
       setIsPlaying(true); // Set isPlaying to true when adding a new file
+      audioRef.current.currentTime = 0;
     }
   };
 
