@@ -111,6 +111,7 @@ const AudioPlayer = () => {
       const storedPlaylist = await getAllItems(db, "playlist");
       setPlaylist(storedPlaylist);
       setCurrentTrackIndex(playlist.length);
+      toast("Successfully Added to PlayList");
       setIsPlaying(true); // Set isPlaying to true when adding a new file
     }
   };
@@ -155,7 +156,7 @@ const AudioPlayer = () => {
 
   const handleEnded = () => {
     playNextTrack();
-    toast.fire("Playlist Repeated");
+    toast("Playlist Repeated");
   };
   const handleClick = (index) => {
     setCurrentTrackIndex(index);
@@ -166,7 +167,7 @@ const AudioPlayer = () => {
   return (
     <div>
       <div className="flex flex-col md:flex-row gap-5 m-5 items-center">
-        <div className="w-2/3">
+        <div className="md:w-2/3">
           <audio
             className="w-full"
             ref={audioRef}
@@ -194,13 +195,15 @@ const AudioPlayer = () => {
             </button>
           </div>
           <p className="bg-base-200 p-5 rounded-md">
-            <span className="font-semibold text-xl  ">Now Playing: </span>
-            <span className="text-accent text-lg font-medium">
+            <span className="font-bold text-md lg:text-xl  ">
+              Now Playing:{" "}
+            </span>
+            <span className="text-accent lg:text-md font-medium ">
               {playlist[currentTrackIndex]?.audioBlob}
             </span>
           </p>
         </div>
-        <div className="w-1/3">
+        <div className="w-10/12 md:w-1/3">
           <div className="my-5">
             <p>Add your Song:</p>
             <input
