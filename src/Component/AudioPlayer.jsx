@@ -1,32 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import Marquee from "react-fast-marquee";
+import { toast } from "react-toastify";
 
 const AudioPlayer = () => {
   const [playlist, setPlaylist] = useState([]);
   const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
   const audioRef = useRef(new Audio());
-  const [isPlaying, setIsPlaying] = useState(true);
-  // const loadAudio = async () => {
-  //   const db = await openDatabase();
-  //   if (playlist.length > 0) {
-  //     const audioBlob = await getItem(
-  //       db,
-  //       "audioFiles",
-  //       currentTrackIndex.toString()
-  //     );
-  //     const url = URL.createObjectURL(audioBlob);
-  //     if (isPlaying) {
-  //       try {
-  //         audioRef.current.src = url;
-  //         await audioRef.current.play();
-  //       } catch (error) {
-  //         console.error("Failed to play audio:", error);
-  //       }
-  //     } else {
-  //       audioRef.current.src = url;
-  //     }
-  //   }
-  // };
+  const [isPlaying, setIsPlaying] = useState(false);
   useEffect(() => {
     const initIndexedDB = async () => {
       const db = await openDatabase();
@@ -37,12 +17,14 @@ const AudioPlayer = () => {
         "settings",
         "lastPlayingAudio"
       );
-      const { trackIndex, position } = lastPlayingAudio;
-
+      // Default values in case lastPlayingAudio is undefined
+      const defaultTrackIndex = 0;
+      const defaultPosition = 0;
+      const { trackIndex = defaultTrackIndex, position = defaultPosition } =
+        lastPlayingAudio || {};
       if (trackIndex !== undefined && position !== undefined) {
         setCurrentTrackIndex(trackIndex);
-        audioRef.current.currentTime = position;
-        if (storedPlaylist.length > 0) {
+        if (storedPlaylist.length > 0 || playlist.length > 0) {
           const audioBlob = await getItem(
             db,
             "audioFiles",
@@ -50,71 +32,68 @@ const AudioPlayer = () => {
           );
           const audioObjectUrl = URL.createObjectURL(audioBlob);
           audioRef.current.src = audioObjectUrl;
+          audioRef.current.currentTime = position;
+          if (isPlaying) {
+            try {
+              await audioRef.current.play();
+              console.log("After play:", audioRef.current.currentTime);
+            } catch (error) {
+              console.error("Failed to play audio:", error);
+            }
+          }
+        }
+      } else {
+        const audioBlob = await getItem(db, "audioFiles");
+        const audioObjectUrl = URL.createObjectURL(audioBlob);
+        audioRef.current.src = audioObjectUrl;
+        if (isPlaying) {
+          try {
+            await audioRef.current.play();
+            console.log("After play:", audioRef.current.currentTime);
+          } catch (error) {
+            console.error("Failed to play audio:", error);
+          }
         }
       }
     };
-
     initIndexedDB();
-  }, []);
-  useEffect(() => {
-    openDatabase().then(async (db) => {
-      if (playlist.length > 0) {
-        getItem(db, "audioFiles", currentTrackIndex.toString())
-          .then((audioBlob) => {
-            const url = URL.createObjectURL(audioBlob);
+  }, [currentTrackIndex, isPlaying, playlist.length]);
 
-            if (isPlaying) {
-              audioRef.current.src = url;
-              audioRef.current.play().catch((error) => {
-                console.error("Failed to play audio:", error);
-              });
-            } else {
-              audioRef.current.src = url;
-            }
-          })
-          .catch((error) => {
-            console.error("Error loading audio:", error);
-          });
-      }
-    });
-  }, [playlist, currentTrackIndex, isPlaying]);
   useEffect(() => {
     const saveLastPlayingAudio = async () => {
       const db = await openDatabase();
-      const lastPlayingAudio = {
-        trackIndex: currentTrackIndex,
-        position: audioRef.current.currentTime,
+
+      // Update the last playing audio information
+      const updateLastPlayingAudio = () => {
+        const lastPlayingAudio = {
+          trackIndex: currentTrackIndex,
+          position: audioRef.current.currentTime,
+        };
+        window.localStorage.setItem(
+          "playing",
+          JSON.stringify(lastPlayingAudio)
+        );
+        putItem(db, "settings", "lastPlayingAudio", lastPlayingAudio);
       };
-      await putItem(db, "settings", "lastPlayingAudio", lastPlayingAudio);
+
+      // Add event listener for timeupdate
+      audioRef.current.addEventListener("timeupdate", updateLastPlayingAudio);
+
+      // If audio is already playing, trigger the event listener immediately
+      if (isPlaying) {
+        updateLastPlayingAudio();
+      }
+
+      // Remove the event listener when the component unmounts
+      return () => {
+        audioRef.current.removeEventListener(
+          "timeupdate",
+          updateLastPlayingAudio
+        );
+      };
     };
-
     saveLastPlayingAudio();
-  }, [currentTrackIndex]);
-
-  // useEffect(() => {
-  //   const loadAudio = async () => {
-  //     const db = await openDatabase();
-  //     if (playlist.length > 0) {
-  //       const audioBlob = await getItem(
-  //         db,
-  //         "audioFiles",
-  //         currentTrackIndex.toString()
-  //       );
-  //       const audioObjectUrl = URL.createObjectURL(audioBlob);
-  //       // Check if audio is playing before setting a new source
-  //       if (!isPlaying) {
-  //         audioRef.current.src = audioObjectUrl;
-  //         try {
-  //           audioRef.current.play();
-  //         } catch (error) {
-  //           console.error("Failed to play audio:", error);
-  //         }
-  //       }
-  //     }
-  //   };
-
-  //   loadAudio();
-  // }, [playlist, currentTrackIndex, isPlaying]);
+  }, [currentTrackIndex, isPlaying]);
 
   const handleFileChange = async (e) => {
     const files = e.target.files;
@@ -135,26 +114,16 @@ const AudioPlayer = () => {
       setIsPlaying(true); // Set isPlaying to true when adding a new file
     }
   };
-  const playPauseHandler = () => {
-    // if (isPlaying) {
-    //   audioRef.current.pause();
-    // } else {
-    //   try {
-    //     audioRef.current.play();
-    //   } catch (error) {
-    //     console.error("Failed to play audio:", error);
-    //   }
-    // }
-    setIsPlaying(!isPlaying);
-    console.log(isPlaying);
-  };
 
   const playNextTrack = () => {
     if (currentTrackIndex < playlist.length - 1) {
       setCurrentTrackIndex(currentTrackIndex + 1);
+      setIsPlaying(true);
     } else {
       setCurrentTrackIndex(0);
+      setIsPlaying(true);
     }
+    audioRef.current.currentTime = 0;
   };
 
   const playPrevTrack = () => {
@@ -165,19 +134,38 @@ const AudioPlayer = () => {
       setCurrentTrackIndex(playlist.length - 1);
       setIsPlaying(true);
     }
+    audioRef.current.currentTime = 0;
   };
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    const handlePlay = () => {
+      setIsPlaying(true);
+    };
+    const handlePause = () => {
+      setIsPlaying(false);
+    };
+    audio.addEventListener("play", handlePlay);
+    audio.addEventListener("pause", handlePause);
+    return () => {
+      audio.removeEventListener("play", handlePlay);
+      audio.removeEventListener("pause", handlePause);
+    };
+  }, [audioRef]);
 
   const handleEnded = () => {
     playNextTrack();
+    toast.fire("Playlist Repeated");
   };
   const handleClick = (index) => {
     setCurrentTrackIndex(index);
     audioRef.current.play();
     setIsPlaying(true);
+    audioRef.current.currentTime = 0;
   };
   return (
     <div>
-      <div className="flex gap-5 m-5 items-center">
+      <div className="flex flex-col md:flex-row gap-5 m-5 items-center">
         <div className="w-2/3">
           <audio
             className="w-full"
@@ -192,7 +180,10 @@ const AudioPlayer = () => {
             >
               Prev
             </button>
-            <button className="btn btn-accent" onClick={playPauseHandler}>
+            <button
+              className="btn btn-accent"
+              onClick={() => setIsPlaying(!isPlaying)}
+            >
               {isPlaying ? "Pause" : "Play"}
             </button>
             <button
@@ -202,10 +193,8 @@ const AudioPlayer = () => {
               Next
             </button>
           </div>
-          <p className="bg-base-100 p-5 rounded-md">
-            <span className="font-semibold text-xl text-black ">
-              Now Playing:{" "}
-            </span>
+          <p className="bg-base-200 p-5 rounded-md">
+            <span className="font-semibold text-xl  ">Now Playing: </span>
             <span className="text-accent text-lg font-medium">
               {playlist[currentTrackIndex]?.audioBlob}
             </span>
@@ -258,8 +247,8 @@ export default AudioPlayer;
 async function openDatabase() {
   const db = await new Promise((resolve, reject) => {
     const request = indexedDB.open("AudioPlayerDB", 1);
-
     request.onupgradeneeded = (event) => {
+      event.preventDefault();
       const db = event.target.result;
       db.createObjectStore("audioFiles");
       db.createObjectStore("playlist");
@@ -267,10 +256,12 @@ async function openDatabase() {
     };
 
     request.onsuccess = (event) => {
+      event.preventDefault();
       resolve(event.target.result);
     };
 
     request.onerror = (event) => {
+      event.preventDefault();
       reject(event.target.error);
     };
   });
@@ -283,6 +274,7 @@ async function putItem(db, storeName, key, value) {
     const transaction = db.transaction(storeName, "readwrite");
     const store = transaction.objectStore(storeName);
     const request = store.put(value, key);
+    console.log(request);
     transaction.oncomplete = () => {
       resolve();
     };
@@ -298,12 +290,13 @@ async function getItem(db, storeName, key) {
     const transaction = db.transaction(storeName);
     const store = transaction.objectStore(storeName);
     const request = store.get(key);
-
     request.onsuccess = (event) => {
+      event.preventDefault();
       resolve(event.target.result);
     };
 
-    request.onerror = () => {
+    request.onerror = (event) => {
+      event.preventDefault();
       reject(request.error);
     };
   });
@@ -314,12 +307,13 @@ async function getAllItems(db, storeName) {
     const transaction = db.transaction(storeName);
     const store = transaction.objectStore(storeName);
     const request = store.getAll();
-
     request.onsuccess = (event) => {
+      event.preventDefault();
       resolve(event.target.result);
     };
 
-    request.onerror = () => {
+    request.onerror = (event) => {
+      event.preventDefault();
       reject(request.error);
     };
   });
